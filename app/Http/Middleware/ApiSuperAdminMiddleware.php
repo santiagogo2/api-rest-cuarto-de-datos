@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 
-class ApiAuthMiddleware
+class ApiSuperAdminMiddleware
 {
     /**
      * Handle an incoming request.
@@ -23,7 +23,16 @@ class ApiAuthMiddleware
             $checkToken = $jwtAuth->checkToken($token);
             
             if($checkToken){
-                return $next($request);
+                $user = $jwtAuth->checktoken($token, true);
+                if($user->role == 'ROLE_SUPER_ADMIN'){
+                    return $next($request);
+                } else {
+                    $data = array(
+                        'status' => 'error',
+                        'code' => 401,
+                        'message' => 'El usuario no tienen permisos para acceder a esta sección. Debe tener un role de Super Adminitrador'
+                    );
+                }
             } else{
                 $data = array(
                     'status' => 'error',

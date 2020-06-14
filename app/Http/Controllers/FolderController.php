@@ -8,231 +8,198 @@ use App\Folder;
 
 class FolderController extends Controller
 {
-	//FUNCIONES PARA VISUALIZAR LAS CARPETAS
+	public function __construct(){
+		$this->middleware('api.admin')->except(['index', 'getFolderByFolderId']);
+	}
+	// =================================================================================
+	// ===========Funciones para visualizar la información de las carpetas==============
+	// =================================================================================
     public function index(Request $request){
-    	// Obtener el token del header
-    	$token = $request->header('Authorization');
-    	$jwtAuth = new \JwtAuth();
-    	$user = $jwtAuth->checkToken($token, true);
-
-    	// Comprobar si el usuario tiene permisos para acceder a esta sección
-    	if($user->role){
-    		$folders = Folder::with('documents')->get();
-	    	if(sizeof($folders) != 0){
-	    		$data = array(
-	    			'status'	=> 'success',
-	    			'code'		=> 200,
-	    			'folders'	=> $folders
-	    		);
-	    	} else{
-	    		$data = array(
-	    			'status'	=> 'success',
-	    			'code'		=> 404,
-	    			'message'	=> 'Aun no se han cargado carpetas a la base de datos.'
-	    		);
-	    	}
-    	} else{
-            $data = array(
-                'status' => 'error',
-                'code' => 401,
-                'message' => 'El Usuario '.$user->user_alias.' no tiene permiso para acceder a esta sección.'
-            );    		
-    	}
+		$folders = Folder::orderBy('name', 'ASC')
+							->with('documents')
+							->get();
+		if(sizeof($folders) != 0){
+			$data = array(
+				'status'	=> 'success',
+				'code'		=> 200,
+				'folders'	=> $folders
+			);
+		} else{
+			$data = array(
+				'status'	=> 'success',
+				'code'		=> 404,
+				'message'	=> 'Aun no se han cargado carpetas a la base de datos.'
+			);
+		}
     	// Dovolver respuesta
     	return response()->json($data, $data['code']);
     }
 
     public function show($id, Request $request){
-    	// Obtener el token del header
-    	$token = $request->header('Authorization');
-    	$jwtAuth = new \JwtAuth();
-    	$user = $jwtAuth->checkToken($token, true);
+		$folder = Folder::find($id);
 
-    	// Comprobar si el usuario tiene permisos para acceder a esta sección
-    	if($user->role == 'ROLE_SUPER_ADMIN' || $user->role == 'ROLE_ADMIN'){
-    		$folder = Folder::find($id);
-
-    		if(is_object($folder)){
-    			$data = array(
-    				'status'	=> 'success',
-    				'code'		=> 200,
-    				'folder'	=> $folder
-    			);
-    		} else{
-    			$data = array(
-    				'status'	=> 'error',
-    				'code'		=> 404,
-    				'message'	=> 'La carpeta con el id '.$id.', no existe.'
-    			);
-    		}
-    	} else{
-            $data = array(
-                'status' => 'error',
-                'code' => 401,
-                'message' => 'El Usuario '.$user->user_alias.' no tiene permiso para acceder a esta sección.'
-            );  
-    	}
+		if(is_object($folder)){
+			$data = array(
+				'status'	=> 'success',
+				'code'		=> 200,
+				'folder'	=> $folder
+			);
+		} else{
+			$data = array(
+				'status'	=> 'error',
+				'code'		=> 404,
+				'message'	=> 'La carpeta con el id '.$id.', no existe.'
+			);
+		}
     	// Dovolver respuesta
     	return response()->json($data, $data['code']);
     }
 
-    //FUNCIÓN PARA CREAR NUEVAS CARPETAS
+    public function getFolderByFolderId($folder_id=null, Request $request){
+		if($folder_id && $folder_id == 'null') $folder_id = null;
+		$folders = Folder::with('documents')
+						 ->where('folder_id', '=', $folder_id)
+						 ->get();
+		if(sizeof($folders) != 0){
+			$data = array(
+				'status'    => 'success',
+				'code'      => 200,
+				'folders'   => $folders
+			);
+		} else{
+			$data = array(
+				'status'    => 'success',
+				'code'      => 404,
+				'message'   => 'Aun no se han cargado carpetas a la base de datos.'
+			);
+		}
+        // Dovolver respuesta
+        return response()->json($data, $data['code']);
+    }
+
+   // =================================================================================
+	// ===================Funciones para guardar nuevas carpetas=======================
+	// ================================================================================
     public function store(Request $request){
-    	// Obtener el token del header
-    	$token = $request->header('Authorization');
-    	$jwtAuth = new \JwtAuth();
-    	$user = $jwtAuth->checkToken($token, true);
+		// Obtener los datos json
+		$json = $request->input('json', null);
+		$params = json_decode($json);
+		$params_array = json_decode($json, true);
 
-    	// Comprobar si el usuario tiene permisos para acceder a esta sección
-    	if($user->role == 'ROLE_SUPER_ADMIN' || $user->role == 'ROLE_ADMIN'){
-    		// Obtener los datos json
-    		$json = $request->input('json', null);
-    		$params = json_decode($json);
-    		$params_array = json_decode($json, true);
+		if(!empty($params_array)){
+			// Validar los datos
+			$validate = \Validator::make($params_array, [
+				'name'	     => 'required|unique:folder',
+				'folder_id'  => 'nullable' 
+			]);
+			if($validate->fails()){
+				$data = array(
+					'status' 	=> 'error',
+					'code'		=> 400,
+					'message'	=> 'La validación de los datos ha fallado',
+					'errors'	=> $validate->errors()
+				);
+			} else{
+				$folder = new Folder();
+				$folder->name = $params->name;
+				$folder->folder_id = $params->folder_id;
 
-    		if(!empty($params_array)){
-    			// Validar los datos
-    			$validate = \Validator::make($params_array, [
-    				'name'	=> 'required|unique:folder'
-    			]);
-    			if($validate->fails()){
-	    			$data = array(
-	    				'status' 	=> 'error',
-	    				'code'		=> 400,
-	    				'message'	=> 'La validación de los datos ha fallado',
-	    				'errors'	=> $validate->errors()
-	    			);
-    			} else{
-    				$folder = new Folder();
-    				$folder->name = $params->name;
+				$folder->save();
 
-    				$folder->save();
-
-    				$data = array(
-    					'status'	=> 'success',
-    					'code'		=> 200,
-    					'message'	=> 'La carpeta '.$folder->name.' se ha creado correctamente.',
-    					'folder'	=> $folder
-    				);
-    			}
-    		} else{
-	            $data = array(
-	                'status' => 'error',
-	                'code' => 411,
-	                'message' => 'Ha ingrasado los datos de manera incorrecta o incompletos'
-	            );
-    		}
-    	} else{
-            $data = array(
-                'status' => 'error',
-                'code' => 401,
-                'message' => 'El Usuario '.$user->user_alias.' no tiene permiso para acceder a esta sección.'
-            );
-    	}
+				$data = array(
+					'status'	=> 'success',
+					'code'		=> 200,
+					'message'	=> 'La carpeta '.$folder->name.' se ha creado correctamente.',
+					'folder'	=> $folder
+				);
+			}
+		} else{
+			$data = array(
+				'status' => 'error',
+				'code' => 411,
+				'message' => 'Ha ingrasado los datos de manera incorrecta o incompletos'
+			);
+		}
     	// Dovolver respuesta
     	return response()->json($data, $data['code']);	
     }
 
-    //FUNCIÓN PARA ACTUALIZAR LOS DATOS DE LAS CARPETAS CREADAS
+    // =================================================================================
+	// ==============Funciones para actualizar los registros de carpetas================
+	// =================================================================================
     public function update($id, Request $request){
-    	// Obtener el token del header
-    	$token = $request->header('Authorization');
-    	$jwtAuth = new \JwtAuth();
-    	$user = $jwtAuth->checkToken($token, true);
+		// Recoger los datos por POST
+		$json = $request->input('json', null);
+		$params = json_decode($json);
+		$params_array = json_decode($json, true);
 
-    	// Comprobar si el usuario tiene permisos para acceder a esta sección
-    	if($user->role == 'ROLE_SUPER_ADMIN' || $user->role == 'ROLE_ADMIN'){
-    		// Recoger los datos por POST
-    		$json = $request->input('json', null);
-    		$params = json_decode($json);
-    		$params_array = json_decode($json, true);
+		if(!empty($params_array)){
+			// Validar los datos
+			$validate = \Validator::make($params_array, [
+				'name'	=> 'required|unique:folder,name,'.$id
+			]);
+			if($validate->fails()){
+				$data = array(
+					'status' 	=> 'error',
+					'code'		=> 400,
+					'message'	=> 'La validación de los datos ha fallado. El nombre de la carpeta ya existe.',
+					'errors'	=> $validate->errors()
+				);
+			} else{
+				// Retirar el contenido que no se desea actualizar
+				unset($params_array['id']);
+				unset($params_array['created_at']);
+				unset($params_array['updated_at']);
 
-    		if(!empty($params_array)){
-    			// Validar los datos
-    			$validate = \Validator::make($params_array, [
-    				'name'	=> 'required|unique:folder,name,'.$id
-    			]);
-    			if($validate->fails()){
-	    			$data = array(
-	    				'status' 	=> 'error',
-	    				'code'		=> 400,
-	    				'message'	=> 'La validación de los datos ha fallado. El nombre de la carpeta ya existe.',
-	    				'errors'	=> $validate->errors()
-	    			);
-	    		} else{
-	    			// Retirar el contenido que no se desea actualizar
-	    			unset($params_array['id']);
-    				unset($params_array['created_at']);
-    				unset($params_array['updated_at']);
-
-    				// Actualizar el usuario en la BD
-    				$folder = Folder::where('id', $id)->update($params_array);
-    				if($folder != 0){
-                        $data = array(
-                            'status' => 'success',
-                            'code' => 200,
-                            'message' => 'La carpeta '.$params->name.' se ha actualizado correctamente.',
-                            'changes' => $params_array
-                        );
-                    } else {
-                        $data = array(
-                            'status' => 'error',
-                            'code' => 404,
-                            'message' => 'No se ha podido actualizar la Carpeta: '.$params->name
-                        );  
-                    }
-	    		}
-    		} else{
-	            $data = array(
-	                'status' => 'error',
-	                'code' => 411,
-	                'message' => 'Ha ingrasado los datos de manera incorrecta o incompletos'
-	            );
-    		}
-    	} else{
-            $data = array(
-                'status' => 'error',
-                'code' => 401,
-                'message' => 'El Usuario '.$user->user_alias.' no tiene permiso para acceder a esta sección.'
-            );
-    	}
+				// Actualizar el usuario en la BD
+				$folder = Folder::where('id', $id)->update($params_array);
+				if($folder != 0){
+					$data = array(
+						'status' => 'success',
+						'code' => 200,
+						'message' => 'La carpeta '.$params->name.' se ha actualizado correctamente.',
+						'changes' => $params_array
+					);
+				} else {
+					$data = array(
+						'status' => 'error',
+						'code' => 404,
+						'message' => 'No se ha podido actualizar la Carpeta: '.$params->name
+					);  
+				}
+			}
+		} else{
+			$data = array(
+				'status' => 'error',
+				'code' => 411,
+				'message' => 'Ha ingrasado los datos de manera incorrecta o incompletos'
+			);
+		}
     	// Dovolver respuesta
     	return response()->json($data, $data['code']);	
     }
 
-    //FUNCIÓN PARA ELIMINAR UNA CARPETA DE LA BASE DE DATOS
+    // =================================================================================
+	// ===============Funciones para eliminar los registros de carpetas=================
+	// =================================================================================
     public function destroy($id, Request $request){
-    	// Obtener el token del header
-    	$token = $request->header('Authorization');
-    	$jwtAuth = new \JwtAuth();
-    	$user = $jwtAuth->checkToken($token, true);
+		$folder = Folder::where('id', $id)->first();
+		if(!empty($folder)){
+			$folder->delete();
 
-    	// Comprobar si el usuario tiene permisos para acceder a esta sección
-    	if($user->role == 'ROLE_SUPER_ADMIN' || $user->role == 'ROLE_ADMIN'){
-    		$folder = Folder::where('id', $id)->first();
-    		if(!empty($folder)){
-    			$folder->delete();
-
-    			$data = array(
-                    'status' => 'success',
-                    'code' => 200,
-                    'message' => 'La carpeta '.$folder->name.' se ha eliminado correctamente',
-                    'destroy' => $folder
-                );
-    		} else{
-                $data = array(
-                    'status' => 'error',
-                    'code' => 404,
-                    'message' => 'No existe ninguna Carpeta con el id: '.$id
-                ); 
-    		}
-    	} else{
-            $data = array(
-                'status' => 'error',
-                'code' => 401,
-                'message' => 'El Usuario '.$user->user_alias.' no tiene permiso para acceder a esta sección.'
-            );
-    	}
+			$data = array(
+				'status' => 'success',
+				'code' => 200,
+				'message' => 'La carpeta '.$folder->name.' se ha eliminado correctamente',
+				'destroy' => $folder
+			);
+		} else{
+			$data = array(
+				'status' => 'error',
+				'code' => 404,
+				'message' => 'No existe ninguna Carpeta con el id: '.$id
+			); 
+		}
     	// Dovolver respuesta
     	return response()->json($data, $data['code']);	
     }
